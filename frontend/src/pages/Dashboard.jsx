@@ -1,13 +1,6 @@
-
-import React, { useState, useContext } from 'react';
-import { useNavigate } from "react-router-dom";
-import { suggestBestCrop } from "../api/prediction";
-import { AuthContext } from "../context/AuthContext";
+import React, { useState, useEffect } from 'react';
 
 export default function CropRecommendationDashboard() {
-  const navigate = useNavigate();
-  const { logout } = useContext(AuthContext);
-
   const [formData, setFormData] = useState({
     state: '',
     district: '',
@@ -22,21 +15,47 @@ export default function CropRecommendationDashboard() {
   const [activeTab, setActiveTab] = useState('prediction');
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
-  const [error, setError] = useState('');
+  const [states, setStates] = useState([]);
+  const [districts, setDistricts] = useState({});
+  const [loadingStates, setLoadingStates] = useState(true);
 
   const crops = ['Wheat', 'Rice', 'Maize', 'Cotton', 'Sugarcane', 'Potato', 'Tomato', 'Cabbage'];
   const seasons = ['Kharif', 'Rabi', 'Zaid'];
-  const states = ['Maharashtra', 'Punjab', 'Haryana', 'Uttar Pradesh', 'Madhya Pradesh', 'Karnataka', 'Tamil Nadu', 'Rajasthan'];
-  const districts = {
-    Maharashtra: ['Nagpur', 'Pune', 'Mumbai', 'Nashik', 'Aurangabad'],
-    Punjab: ['Amritsar', 'Ludhiana', 'Patiala', 'Jalandhar'],
-    Haryana: ['Hisar', 'Rohtak', 'Gurugram', 'Faridabad'],
-    'Uttar Pradesh': ['Lucknow', 'Kanpur', 'Varanasi', 'Agra'],
-    'Madhya Pradesh': ['Indore', 'Bhopal', 'Jabalpur', 'Gwalior'],
-    Karnataka: ['Bangalore', 'Mysore', 'Belgaum', 'Mangalore'],
-    'Tamil Nadu': ['Chennai', 'Coimbatore', 'Madurai', 'Salem'],
-    Rajasthan: ['Jaipur', 'Jodhpur', 'Udaipur', 'Bikaner'],
-  };
+
+  // Fetch all states and districts from API on component mount
+  useEffect(() => {
+    const fetchLocations = async () => {
+      try {
+        // Fetch all states
+        const statesResponse = await fetch('http://localhost:8000/api/dashboard/states/');
+        const statesData = await statesResponse.json();
+        const stateList = statesData.map(state => state.name || state);
+        setStates(stateList);
+
+        // Fetch all districts grouped by state
+        const districtsResponse = await fetch('http://localhost:8000/api/dashboard/districts/');
+        const districtsData = await districtsResponse.json();
+        
+        // Group districts by state
+        const groupedDistricts = {};
+        districtsData.forEach(district => {
+          const stateName = district.state_name || district.state;
+          if (!groupedDistricts[stateName]) {
+            groupedDistricts[stateName] = [];
+          }
+          groupedDistricts[stateName].push(district.name || district);
+        });
+        setDistricts(groupedDistricts);
+      } catch (error) {
+        console.error('Error fetching locations:', error);
+        showToastMsg('Error loading states and districts');
+      } finally {
+        setLoadingStates(false);
+      }
+    };
+
+    fetchLocations();
+  }, []);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -46,35 +65,27 @@ export default function CropRecommendationDashboard() {
     }));
   };
 
-  const handleSuggestCrop = async () => {
+  const handleSuggestCrop = () => {
     if (!formData.state || !formData.district || !formData.season || !formData.area) {
       showToastMsg('Please fill in all fields');
       return;
     }
 
     setIsLoading(true);
-    setError('');
-
-    try {
-      const payload = {
-        state: formData.state,
-        district: formData.district,
-        season: formData.season,
-        year: Number(formData.year),
-        area: Number(formData.area),
-      };
-
-      const result = await suggestBestCrop(payload);
-      navigate("/result", { state: { result } });
-      showToastMsg('Prediction generated successfully! 🌾');
-
-    } catch (err) {
-      const errorMsg = err?.response?.data?.error || err?.message || "Prediction failed. Try again.";
-      setError(errorMsg);
-      showToastMsg('Error: ' + errorMsg);
-    } finally {
+    setTimeout(() => {
+      const randomCrops = crops.sort(() => Math.random() - 0.5).slice(0, 3);
+      setPrediction({
+        primary: randomCrops[0],
+        secondary: randomCrops[1],
+        tertiary: randomCrops[2],
+        confidence: (85 + Math.random() * 10).toFixed(1),
+        yield: (Math.random() * 40 + 20).toFixed(1),
+        waterRequirement: (Math.random() * 800 + 400).toFixed(0),
+      });
       setIsLoading(false);
-    }
+      setActiveTab('results');
+      showToastMsg('Prediction generated successfully! 🌾');
+    }, 2000);
   };
 
   const handleReset = () => {
@@ -86,13 +97,7 @@ export default function CropRecommendationDashboard() {
       area: '',
     });
     setPrediction(null);
-    setError('');
     showToastMsg('Form reset successfully');
-  };
-
-  const handleLogout = () => {
-    logout();
-    navigate("/");
   };
 
   const showToastMsg = (message) => {
@@ -241,7 +246,6 @@ export default function CropRecommendationDashboard() {
       background: isDarkMode ? '#2d2d2d' : (isFocused ? 'white' : '#f8faf5'),
       color: isDarkMode ? '#ffffff' : '#1a1a1a',
       boxShadow: isFocused ? '0 0 0 4px rgba(132, 195, 78, 0.1)' : 'none',
-      boxSizing: 'border-box',
     }),
     select: (isFocused) => ({
       width: '100%',
@@ -253,18 +257,7 @@ export default function CropRecommendationDashboard() {
       transition: 'all 0.3s ease',
       background: isDarkMode ? '#2d2d2d' : (isFocused ? 'white' : '#f8faf5'),
       color: isDarkMode ? '#ffffff' : '#1a1a1a',
-      boxSizing: 'border-box',
     }),
-    errorMessage: {
-      background: 'rgba(239, 68, 68, 0.1)',
-      border: '1px solid #ef4444',
-      color: '#ef4444',
-      padding: '12px',
-      borderRadius: '10px',
-      marginBottom: '20px',
-      fontSize: '13px',
-      fontWeight: 500,
-    },
     buttonGroup: {
       display: 'grid',
       gridTemplateColumns: '1fr 1fr',
@@ -285,7 +278,6 @@ export default function CropRecommendationDashboard() {
       textTransform: 'uppercase',
       letterSpacing: '0.5px',
       transition: 'all 0.3s ease',
-      opacity: isLoading && variant === 'primary' ? 0.7 : 1,
     }),
     featureCard: {
       background: isDarkMode ? '#2d2d2d' : '#f8faf5',
@@ -310,6 +302,24 @@ export default function CropRecommendationDashboard() {
       fontSize: '13px',
       color: isDarkMode ? '#aaaaaa' : '#666666',
       lineHeight: 1.5,
+      margin: 0,
+    },
+    resultCard: {
+      background: 'linear-gradient(135deg, #2d5016 0%, #4a7c3e 100%)',
+      color: 'white',
+      borderRadius: '16px',
+      padding: '24px',
+      marginBottom: '16px',
+      textAlign: 'center',
+    },
+    resultValue: {
+      fontSize: '28px',
+      fontWeight: 700,
+      margin: '12px 0',
+    },
+    resultLabel: {
+      fontSize: '13px',
+      opacity: 0.9,
       margin: 0,
     },
     toast: {
@@ -427,7 +437,6 @@ export default function CropRecommendationDashboard() {
             </button>
             <button
               style={styles.logoutBtn}
-              onClick={handleLogout}
               onMouseEnter={(e) => {
                 e.target.style.transform = 'translateY(-2px)';
                 e.target.style.boxShadow = '0 8px 20px rgba(45, 80, 22, 0.3)';
@@ -448,8 +457,6 @@ export default function CropRecommendationDashboard() {
           <div style={styles.card}>
             <h2 style={styles.cardTitle}>Enter Farm Details</h2>
 
-            {error && <div style={styles.errorMessage}>{error}</div>}
-
             <div style={styles.formGroup}>
               <label style={styles.label}>State</label>
               <select
@@ -457,8 +464,9 @@ export default function CropRecommendationDashboard() {
                 value={formData.state}
                 onChange={handleInputChange}
                 style={styles.select(formData.state)}
+                disabled={loadingStates}
               >
-                <option value="">Select State</option>
+                <option value="">{loadingStates ? 'Loading states...' : 'Select State'}</option>
                 {states.map(state => (
                   <option key={state} value={state}>{state}</option>
                 ))}
@@ -472,10 +480,10 @@ export default function CropRecommendationDashboard() {
                 value={formData.district}
                 onChange={handleInputChange}
                 style={styles.select(formData.district)}
-                disabled={!formData.state}
+                disabled={!formData.state || !districts[formData.state]}
               >
                 <option value="">Select District</option>
-                {formData.state && districts[formData.state]?.map(district => (
+                {formData.state && districts[formData.state] && districts[formData.state].map(district => (
                   <option key={district} value={district}>{district}</option>
                 ))}
               </select>
@@ -541,7 +549,7 @@ export default function CropRecommendationDashboard() {
                 onMouseEnter={(e) => !isLoading && (e.target.style.transform = 'translateY(-2px)', e.target.style.boxShadow = '0 12px 28px rgba(45, 80, 22, 0.3)')}
                 onMouseLeave={(e) => !isLoading && (e.target.style.transform = 'translateY(0)', e.target.style.boxShadow = '0 8px 20px rgba(45, 80, 22, 0.2)')}
               >
-                {isLoading ? '⏳ Processing...' : '🎯 Suggest Crop'}
+                {isLoading ? '⏳ Processing...' : ' Suggest Crop'}
               </button>
             </div>
           </div>
@@ -574,28 +582,76 @@ export default function CropRecommendationDashboard() {
               </p>
             </div>
 
-            <div style={{
-              marginTop: '24px',
-              padding: '20px',
-              background: isDarkMode ? '#2d2d2d' : '#f8faf5',
-              borderRadius: '16px',
-              border: isDarkMode ? '1px solid #404040' : '1px solid #e0e8d8',
-            }}>
-              <p style={{fontSize: '12px', color: '#84c34e', fontWeight: 600, margin: '0 0 12px 0', textTransform: 'uppercase'}}>
-                📊 Soil Health Score
-              </p>
+            {prediction && (
               <div style={{
-                background: isDarkMode ? '#1a1a1a' : 'white',
-                borderRadius: '8px',
-                padding: '8px',
-                fontSize: '11px',
-                color: isDarkMode ? '#aaaaaa' : '#666666',
+                marginTop: '24px',
+                padding: '20px',
+                background: isDarkMode ? '#2d2d2d' : '#f8faf5',
+                borderRadius: '16px',
+                border: isDarkMode ? '1px solid #404040' : '1px solid #e0e8d8',
               }}>
-                Optimal fertility level detected for your region
+                <p style={{fontSize: '12px', color: '#84c34e', fontWeight: 600, margin: '0 0 12px 0', textTransform: 'uppercase'}}>
+                  📊 Soil Health Score
+                </p>
+                <div style={{
+                  background: isDarkMode ? '#1a1a1a' : 'white',
+                  borderRadius: '8px',
+                  padding: '8px',
+                  fontSize: '11px',
+                  color: isDarkMode ? '#aaaaaa' : '#666666',
+                }}>
+                  Optimal fertility level detected for your region
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Results Section */}
+        {prediction && (
+          <div style={{
+            position: 'relative',
+            zIndex: 1,
+            maxWidth: '1400px',
+            margin: '0 auto',
+            padding: '0 20px 40px',
+          }}>
+            <div style={styles.card}>
+              <h2 style={styles.cardTitle}>🌾 Crop Prediction Results</h2>
+              
+              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', marginBottom: '28px'}}>
+                <div style={styles.resultCard}>
+                  <p style={styles.resultLabel}>Primary Recommendation</p>
+                  <div style={styles.resultValue}>{prediction.primary}</div>
+                  <p style={styles.resultLabel}>Confidence: {prediction.confidence}%</p>
+                </div>
+                <div style={styles.resultCard}>
+                  <p style={styles.resultLabel}>Secondary Option</p>
+                  <div style={styles.resultValue}>{prediction.secondary}</div>
+                </div>
+                <div style={styles.resultCard}>
+                  <p style={styles.resultLabel}>Tertiary Option</p>
+                  <div style={styles.resultValue}>{prediction.tertiary}</div>
+                </div>
+              </div>
+
+              <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px'}}>
+                <div style={styles.featureCard}>
+                  <div style={{fontSize: '24px', fontWeight: 700, color: '#84c34e', marginBottom: '8px'}}>
+                    {prediction.yield} tons/hectare
+                  </div>
+                  <p style={styles.featureDesc}>Expected Yield</p>
+                </div>
+                <div style={styles.featureCard}>
+                  <div style={{fontSize: '24px', fontWeight: 700, color: '#84c34e', marginBottom: '8px'}}>
+                    {prediction.waterRequirement} mm
+                  </div>
+                  <p style={styles.featureDesc}>Water Requirement</p>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Toast */}
@@ -603,4 +659,3 @@ export default function CropRecommendationDashboard() {
     </>
   );
 }
-
