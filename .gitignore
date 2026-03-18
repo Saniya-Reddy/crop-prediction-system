@@ -1,3 +1,5 @@
 node_modules/ 
 venv/ 
 __pycache__/ 
+backend/prediction/models/*.pkl 
+backend/prediction/models/crop_model.pkl 
